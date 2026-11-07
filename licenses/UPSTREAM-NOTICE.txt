@@ -1,0 +1,16 @@
+Praisenter packaging of NDI(R) runtime libraries
+
+NDI(R) is a registered trademark of Vizrt NDI AB.
+Vendor website: https://ndi.video/
+SDK agreement: https://ndi.link/ndisdk_license
+
+The runtime libraries were supplied manually from SDK version 6.3.2.0.
+This package does not download, compile, modify, or re-sign those libraries.
+build-info.properties identifies the exact supplied files and SHA-256 hashes.
+The original vendor notice is included alongside this notice, unchanged.
+
+The binary libraries remain subject to the vendor SDK agreement and the
+third-party terms in their original notices. This packaging notice does not
+grant additional rights or replace the SDK agreement. Consumers must satisfy
+the applicable EULA, attribution, and distribution requirements in their
+applications. Do not install the libraries into system-wide directories.

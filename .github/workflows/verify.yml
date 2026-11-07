@@ -1,0 +1,133 @@
+name: Verify
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+  workflow_dispatch:
+  workflow_call:
+    inputs:
+      ref:
+        type: string
+        required: false
+        default: ''
+    outputs:
+      version:
+        value: ${{ jobs.build.outputs.version }}
+      commit:
+        value: ${{ jobs.build.outputs.commit }}
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: pwsh
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    outputs:
+      version: ${{ steps.metadata.outputs.version }}
+      commit: ${{ steps.metadata.outputs.commit }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref || github.ref }}
+          persist-credentials: false
+      - uses: actions/setup-java@v6
+        with:
+          distribution: zulu
+          java-version: '25'
+          cache: maven
+      - name: Read checked-out metadata and verify Maven baseline
+        id: metadata
+        run: |
+          $ErrorActionPreference = 'Stop'
+          [xml] $pom = Get-Content pom.xml -Raw
+          $commit = git rev-parse HEAD
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Add-Content -Path $env:GITHUB_OUTPUT -Value "version=$($pom.project.version)"
+          Add-Content -Path $env:GITHUB_OUTPUT -Value "commit=$commit"
+          $maven = mvn -version
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if (($maven -join "`n") -notmatch 'Apache Maven 3\.(?:9|[1-9]\d+)\.') { throw 'Maven 3.9+ (not Maven 4) is required' }
+      - name: Package and check all archives
+        run: |
+          ./.github/scripts/package.ps1
+          foreach ($classifier in @('windows-x86_64', 'linux-x86_64', 'macos-x86_64', 'macos-aarch64')) {
+            ./.github/scripts/test.ps1 -Classifier $classifier -ArchiveOnly
+          }
+      - name: Verify Maven attachments
+        run: |
+          mvn -B -ntp verify
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - uses: actions/upload-artifact@v6
+        with:
+          name: ndi-distributions
+          path: |
+            target/distributions/*.zip
+            target/distributions/SHA256SUMS
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 7
+
+  consumer:
+    needs: build
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: windows-2025
+            classifier: windows-x86_64
+            architecture: x64
+            runner-architecture: X64
+          - runner: ubuntu-24.04
+            classifier: linux-x86_64
+            architecture: x64
+            runner-architecture: X64
+          - runner: macos-15-intel
+            classifier: macos-x86_64
+            architecture: x64
+            runner-architecture: X64
+          - runner: macos-15
+            classifier: macos-aarch64
+            architecture: aarch64
+            runner-architecture: ARM64
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.build.outputs.commit }}
+          persist-credentials: false
+      - name: Assert runner architecture
+        env:
+          EXPECTED_ARCHITECTURE: ${{ matrix.runner-architecture }}
+        run: |
+          if ($env:RUNNER_ARCH -ne $env:EXPECTED_ARCHITECTURE) {
+            throw "Expected $env:EXPECTED_ARCHITECTURE runner, got $env:RUNNER_ARCH"
+          }
+      - uses: actions/setup-java@v6
+        with:
+          distribution: zulu
+          java-version: '25'
+          architecture: ${{ matrix.architecture }}
+          cache: maven
+      - uses: actions/download-artifact@v7
+        with:
+          name: ndi-distributions
+          path: target/distributions
+      - name: Validate archive and test actual Maven resolution and unpacking
+        env:
+          CLASSIFIER: ${{ matrix.classifier }}
+          ARTIFACT_VERSION: ${{ needs.build.outputs.version }}
+        run: |
+          ./.github/scripts/test.ps1 -Classifier $env:CLASSIFIER -ArchiveOnly
+          $archive = "target/distributions/ndi-$env:ARTIFACT_VERSION-$env:CLASSIFIER.zip"
+          mvn -B -ntp org.apache.maven.plugins:maven-install-plugin:3.1.4:install-file "-Dfile=$archive" '-DpomFile=pom.xml' "-Dclassifier=$env:CLASSIFIER" '-Dpackaging=zip'
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          mvn -B -ntp -f src/it/consumer/pom.xml clean verify "-Dndi.classifier=$env:CLASSIFIER" "-Dndi.artifact.version=$env:ARTIFACT_VERSION"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          ./.github/scripts/test.ps1 -Classifier $env:CLASSIFIER

@@ -1,0 +1,103 @@
+name: Publish to Maven Central
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing reviewed release tag, for example v6.3.2.0-1'
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: pwsh
+
+concurrency:
+  group: maven-central-release
+  cancel-in-progress: false
+
+jobs:
+  select:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    outputs:
+      commit: ${{ steps.select.outputs.commit }}
+      version: ${{ steps.select.outputs.version }}
+    steps:
+      - name: Validate requested tag syntax
+        env:
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: |
+          if ($env:RELEASE_TAG -notmatch '^v\d+\.\d+\.\d+\.\d+-[1-9]\d*$') { throw 'Invalid release tag' }
+      - uses: actions/checkout@v7
+        with:
+          ref: refs/tags/${{ inputs.tag }}
+          persist-credentials: false
+      - name: Lock release commit and check version and local inputs
+        id: select
+        env:
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          [xml] $pom = Get-Content pom.xml -Raw
+          if ($env:RELEASE_TAG -cne "v$($pom.project.version)") { throw 'Release tag must match the POM version' }
+          ./.github/scripts/package.ps1 -CheckRelease
+          $commit = git rev-parse HEAD
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Add-Content -Path $env:GITHUB_OUTPUT -Value "commit=$commit"
+          Add-Content -Path $env:GITHUB_OUTPUT -Value "version=$($pom.project.version)"
+
+  verify:
+    needs: select
+    uses: ./.github/workflows/verify.yml
+    with:
+      ref: ${{ needs.select.outputs.commit }}
+
+  publish:
+    needs: [select, verify]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    environment: maven-central
+    env:
+      CENTRAL_USERNAME: ${{ secrets.nexus_username }}
+      CENTRAL_PASSWORD: ${{ secrets.nexus_password }}
+      GPG_PASSPHRASE: ${{ secrets.gpg_passphrase }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.select.outputs.commit }}
+          persist-credentials: false
+      - name: Confirm verification identity
+        env:
+          SELECTED_COMMIT: ${{ needs.select.outputs.commit }}
+          VERIFIED_COMMIT: ${{ needs.verify.outputs.commit }}
+          SELECTED_VERSION: ${{ needs.select.outputs.version }}
+          VERIFIED_VERSION: ${{ needs.verify.outputs.version }}
+        run: |
+          if ($env:SELECTED_COMMIT -cne $env:VERIFIED_COMMIT -or $env:SELECTED_VERSION -cne $env:VERIFIED_VERSION) {
+            throw 'Verification did not test the selected release'
+          }
+      - uses: actions/setup-java@v6
+        with:
+          distribution: zulu
+          java-version: '25'
+          cache: maven
+          server-id: central
+          server-username-env-var: CENTRAL_USERNAME
+          server-password-env-var: CENTRAL_PASSWORD
+          gpg-private-key: ${{ secrets.gpg_private_key }}
+          gpg-passphrase-env-var: GPG_PASSPHRASE
+      - uses: actions/download-artifact@v7
+        with:
+          name: ndi-distributions
+          path: target/distributions
+      - name: Validate exact tested archives, sign and upload for Central validation
+        run: |
+          foreach ($classifier in @('windows-x86_64', 'linux-x86_64', 'macos-x86_64', 'macos-aarch64')) {
+            ./.github/scripts/test.ps1 -Classifier $classifier -ArchiveOnly
+          }
+          mvn -B -ntp -Prelease deploy
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

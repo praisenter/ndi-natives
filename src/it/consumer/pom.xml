@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <groupId>org.praisenter.test</groupId>
+    <artifactId>ndi-consumer</artifactId>
+    <version>1</version>
+    <packaging>pom</packaging>
+    <properties>
+        <ndi.artifact.version>6.3.2.0-1</ndi.artifact.version>
+        <ndi.classifier>select-a-classifier</ndi.classifier>
+    </properties>
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-clean-plugin</artifactId>
+                <version>3.5.0</version>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-dependency-plugin</artifactId>
+                <version>3.9.0</version>
+                <executions>
+                    <execution>
+                        <id>unpack-native-libraries</id>
+                        <phase>generate-resources</phase>
+                        <goals><goal>unpack</goal></goals>
+                        <configuration>
+                            <artifactItems>
+                                <artifactItem>
+                                    <groupId>org.praisenter</groupId>
+                                    <artifactId>ndi</artifactId>
+                                    <version>${ndi.artifact.version}</version>
+                                    <type>zip</type>
+                                    <classifier>${ndi.classifier}</classifier>
+                                    <outputDirectory>${project.build.directory}/native libraries</outputDirectory>
+                                </artifactItem>
+                            </artifactItems>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
+</project>
