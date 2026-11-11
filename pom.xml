@@ -5,7 +5,7 @@
     <modelVersion>4.0.0</modelVersion>
     <groupId>org.praisenter</groupId>
     <artifactId>ndi</artifactId>
-    <version>6.3.2.0-1</version>
+    <version>6.3.2.0-2</version>
     <packaging>pom</packaging>
     <name>Praisenter NDI Runtime Libraries</name>
     <description>Classified distributions of supplied NDI native runtime libraries for Praisenter.</description>
