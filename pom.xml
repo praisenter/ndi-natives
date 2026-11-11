@@ -9,7 +9,7 @@
     <packaging>pom</packaging>
     <name>Praisenter NDI Runtime Libraries</name>
     <description>Classified distributions of supplied NDI native runtime libraries for Praisenter.</description>
-    <url>https://github.com/praisenter/ndi-natives-maven</url>
+    <url>https://github.com/praisenter/ndi-natives</url>
     <licenses>
         <license>
             <name>NDI SDK License Agreement</name>
@@ -27,9 +27,9 @@
         </developer>
     </developers>
     <scm>
-        <connection>scm:git:https://github.com/praisenter/ndi-natives-maven.git</connection>
-        <developerConnection>scm:git:ssh://git@github.com/praisenter/ndi-natives-maven.git</developerConnection>
-        <url>https://github.com/praisenter/ndi-natives-maven</url>
+        <connection>scm:git:https://github.com/praisenter/ndi-natives.git</connection>
+        <developerConnection>scm:git:ssh://git@github.com/praisenter/ndi-natives.git</developerConnection>
+        <url>https://github.com/praisenter/ndi-natives</url>
         <tag>HEAD</tag>
     </scm>
     <properties>
